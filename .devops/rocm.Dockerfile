@@ -103,23 +103,80 @@ COPY --from=build /app/lib/ /app
 ### Full
 FROM base AS full
 
+ARG USER_NAME=ubuntu
+ARG USER_ID=1000
+ARG GROUP_ID=1000
+
 COPY --from=build /app/full /app
 
 WORKDIR /app
 
-RUN apt-get update \
-    && apt-get install -y \
-    git \
-    python3-pip \
-    python3 \
-    python3-wheel \
-    && pip install --break-system-packages --upgrade setuptools \
-    && pip install --break-system-packages -r requirements.txt \
-    && apt autoremove -y \
-    && apt clean -y \
-    && rm -rf /tmp/* /var/tmp/* \
-    && find /var/cache/apt/archives /var/lib/apt/lists -not -name lock -type f -delete \
-    && find /var/cache -type f -delete
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        git \
+        python3 \
+        python3-pip \
+        python3-wheel; \
+    pip install --break-system-packages --upgrade setuptools; \
+    pip install --break-system-packages -r requirements.txt; \
+    \
+    # Ensure the requested numeric GID exists.
+    if getent group "${GROUP_ID}" >/dev/null; then \
+        EXISTING_GROUP="$(getent group "${GROUP_ID}" | cut -d: -f1)"; \
+        echo "Reusing existing group ${EXISTING_GROUP} with GID ${GROUP_ID}"; \
+    elif getent group "${USER_NAME}" >/dev/null; then \
+        echo "Changing group ${USER_NAME} to GID ${GROUP_ID}"; \
+        groupmod --gid "${GROUP_ID}" "${USER_NAME}"; \
+    else \
+        echo "Creating group ${USER_NAME} with GID ${GROUP_ID}"; \
+        groupadd --gid "${GROUP_ID}" "${USER_NAME}"; \
+    fi; \
+    \
+    # Reuse an existing numeric UID, or create/modify the requested user.
+    if getent passwd "${USER_ID}" >/dev/null; then \
+        EXISTING_USER="$(getent passwd "${USER_ID}" | cut -d: -f1)"; \
+        echo "Reusing existing user ${EXISTING_USER} with UID ${USER_ID}"; \
+    elif id "${USER_NAME}" >/dev/null 2>&1; then \
+        echo "Changing user ${USER_NAME} to UID ${USER_ID}:${GROUP_ID}"; \
+        usermod \
+            --uid "${USER_ID}" \
+            --gid "${GROUP_ID}" \
+            "${USER_NAME}"; \
+    else \
+        echo "Creating user ${USER_NAME} with UID ${USER_ID}:${GROUP_ID}"; \
+        useradd \
+            --uid "${USER_ID}" \
+            --gid "${GROUP_ID}" \
+            --create-home \
+            --shell /bin/bash \
+            "${USER_NAME}"; \
+    fi; \
+    \
+    install -d \
+        -o "${USER_ID}" \
+        -g "${GROUP_ID}" \
+        "/home/${USER_NAME}" \
+        "/home/${USER_NAME}/.cache" \
+        "/home/${USER_NAME}/.cache/huggingface" \
+        /models \
+        /output; \
+    \
+    apt-get autoremove -y; \
+    apt-get clean; \
+    rm -rf /tmp/* /var/tmp/*; \
+    find /var/cache/apt/archives /var/lib/apt/lists \
+        -not -name lock \
+        -type f \
+        -delete; \
+    find /var/cache -type f -delete
+
+ENV HOME=/home/${USER_NAME} \
+    XDG_CACHE_HOME=/home/${USER_NAME}/.cache \
+    HF_HOME=/home/${USER_NAME}/.cache/huggingface \
+    PYTHONDONTWRITEBYTECODE=1
+
+USER ${USER_ID}:${GROUP_ID}
 
 ENTRYPOINT ["/app/tools.sh"]
 
