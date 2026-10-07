@@ -233,6 +233,11 @@ struct llama_layer_nextn {
     struct ggml_tensor * shared_head_head_s    = nullptr;
     struct ggml_tensor * shared_head_head_in_s = nullptr;
     struct ggml_tensor * shared_head_norm      = nullptr;
+
+    // qwen4exp: the MTP block collapses its hyper-connection streams with its own mixer
+    struct ggml_tensor * hc_head_norm          = nullptr;
+    struct ggml_tensor * hc_head_down          = nullptr;
+    struct ggml_tensor * hc_head_up            = nullptr;
 };
 
 struct llama_layer_switch_lora {
@@ -303,6 +308,10 @@ struct llama_layer {
     struct ggml_tensor * wv_enc    = nullptr;
     struct ggml_tensor * wo_enc    = nullptr;
     struct ggml_tensor * wqkv_gate = nullptr;
+    // K2 Horizon MoVA
+    struct ggml_tensor * attn_v_gate   = nullptr;
+    struct ggml_tensor * attn_v_gate_b = nullptr;
+    struct ggml_tensor * attn_v_exps   = nullptr;
 
     // relative position bias
     struct ggml_tensor * attn_rel_b       = nullptr;
@@ -679,6 +688,7 @@ struct llama_model {
     struct ggml_tensor * cls_out   = nullptr;
     struct ggml_tensor * cls_out_b = nullptr;
     struct ggml_tensor * cls_norm  = nullptr;
+    struct ggml_tensor * cls_norm_b = nullptr;
 
     struct ggml_tensor * conv1d   = nullptr;
     struct ggml_tensor * conv1d_b = nullptr;
